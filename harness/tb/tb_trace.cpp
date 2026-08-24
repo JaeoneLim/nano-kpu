@@ -74,6 +74,9 @@ static uint64_t arg_u64(int argc, char** argv, const char* key, uint64_t dflt) {
 
 static bool parse_trace_depth_arg(int argc, char** argv, uint64_t* depth) {
     std::string s = arg_str(argc, argv, "--trace-depth", "5");
+    if (s.empty()) return false;
+    for (char c : s)
+        if (c < '0' || c > '9') return false;
     errno = 0;
     char* end = nullptr;
     unsigned long long parsed = strtoull(s.c_str(), &end, 10);

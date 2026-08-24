@@ -1,5 +1,6 @@
 from pathlib import Path
 import argparse
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -69,6 +70,53 @@ class TraceQuickTests(unittest.TestCase):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     trace_quick.parse_trace_depth(value)
         self.assertEqual(trace_quick.parse_trace_depth("7"), 7)
+
+    def test_cpp_trace_depth_parser_rejects_non_decimal_syntax(self):
+        source = TRACE_TB.read_text(encoding="utf-8")
+        helpers_start = source.index("static std::string arg_str(")
+        helpers_end = source.index("\nint main(", helpers_start)
+        parser_helpers = source[helpers_start:helpers_end]
+
+        harness = """\
+#include <cerrno>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+""" + parser_helpers + """
+int main(int argc, char** argv) {
+    uint64_t depth = 0;
+    return parse_trace_depth_arg(argc, argv, &depth) ? 0 : 2;
+}
+"""
+        compiler = shutil.which("c++")
+        if compiler is None:
+            self.fail("C++ compiler is required for parser regression")
+        with tempfile.TemporaryDirectory() as temp:
+            source_path = Path(temp) / "trace_depth_parser.cpp"
+            binary = Path(temp) / "trace_depth_parser"
+            source_path.write_text(harness, encoding="utf-8")
+            subprocess.run(
+                [compiler, "-std=c++14", str(source_path), "-o", str(binary)],
+                check=True,
+            )
+            for value in (
+                "-18446744073709551615",
+                "-1",
+                "+7",
+                " 7",
+                "7junk",
+                "0",
+                "2147483648",
+            ):
+                with self.subTest(value=value):
+                    result = subprocess.run([str(binary), f"--trace-depth={value}"])
+                    self.assertEqual(result.returncode, 2)
+            for value in ("1", "7", "2147483647"):
+                with self.subTest(value=value):
+                    result = subprocess.run([str(binary), f"--trace-depth={value}"])
+                    self.assertEqual(result.returncode, 0)
 
     def test_trace_model_cache_is_keyed_by_depth(self):
         with tempfile.TemporaryDirectory() as temp:
