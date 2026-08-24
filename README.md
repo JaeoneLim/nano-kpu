@@ -11,6 +11,16 @@ decode.
 
 *Disclaimer: This is a demonstration of Kimi K3, not an official project by Moonshot AI.*
 
+## Changes in this fork
+
+This fork adds Apple Silicon simulation support, an isolated Verilator FST
+tracing flow, source-grounded RTL architecture documentation, editable
+Excalidraw diagrams, a ten-stage Token Journey, and focused Surfer waveform
+evidence. These additions and modifications are distributed under the Apache
+License 2.0 unless otherwise noted in `THIRD_PARTY_NOTICES.md`.
+
+This is an independent community fork and is not endorsed by Moonshot AI.
+
 ## Layout
 
 ```

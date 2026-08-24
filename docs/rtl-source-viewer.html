@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RTL Source Viewer</title>
+<link rel="stylesheet" href="vendor/github-dark.min.css">
+<style>
+:root{color-scheme:dark;--bg:#07111f;--panel:#0d1b2e;--line:#29445f;--text:#e8eef8;--muted:#9fb0c6;--blue:#60a5fa;--hot:#fbbf24}
+*{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,sans-serif}body{display:flex;flex-direction:column;overflow:hidden}
+header{height:78px;flex:0 0 78px;display:flex;align-items:center;gap:16px;padding:0 20px;background:linear-gradient(180deg,#10213a,#0b1728);border-bottom:1px solid var(--line)}
+.title{min-width:0}.eyebrow{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#7dd3fc;font-weight:850}.title h1{margin:4px 0 0;font:750 20px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta{font:11px ui-monospace,monospace;color:var(--muted);margin-left:6px;white-space:nowrap}.actions{margin-left:auto;display:flex;gap:7px}.actions button{height:36px;border-radius:8px;border:1px solid #42668d;background:#17304d;color:#eef6ff;padding:0 12px;font-weight:800;cursor:pointer}.actions button:hover,.actions button.active{background:#28558c;border-color:#75a8df}.actions button:disabled{opacity:.4;cursor:default}
+#status{height:30px;flex:0 0 30px;display:flex;align-items:center;padding:0 20px;border-bottom:1px solid #1d324a;background:#091522;color:#9fb0c6;font:11px ui-monospace,monospace}.tag{display:inline-block;color:#fde68a;background:#49380e;border:1px solid #876a16;border-radius:5px;padding:2px 6px;margin-right:8px}
+.codeFrame{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:max-content max-content;align-content:start;background:#0d1117}.codeFrame pre{margin:0;font:12px/1.58 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:4}.lineNums{position:sticky;left:0;z-index:3;padding:18px 12px 40px 16px;text-align:right;color:#60758e;background:#09111d;border-right:1px solid #263d57;user-select:none;min-height:100%}.sourcePre{padding:18px 28px 40px 16px;min-width:max-content}.sourcePre code.hljs{padding:0;background:transparent;overflow:visible}.error{padding:28px;color:#fca5a5;font:14px/1.6 ui-monospace,monospace;white-space:pre-wrap}
+@media(max-width:760px){.meta{display:none}.actions button{padding:0 8px;font-size:11px}.title h1{font-size:15px}}
+</style>
+</head>
+<body>
+<header><div class="title"><div class="eyebrow">nano-kpu · highlighted Verilog source</div><h1 id="title">Loading RTL source…</h1></div><div class="meta" id="meta"></div><div class="actions"><button id="back">← Back</button><button id="moduleView">Selected module</button><button id="fileView">Full file</button><button id="copy">Copy</button></div></header>
+<div id="status">Loading…</div>
+<div class="codeFrame" id="codeFrame"><pre class="lineNums" id="lineNums"></pre><pre class="sourcePre"><code class="language-verilog" id="source"></code></pre></div>
+<script src="vendor/highlight.min.js"></script><script src="vendor/verilog.min.js"></script>
+<script>
+const allowed=new Set(['msh_chip_top.v','msh_seq.v','msh_fetch.v','msh_deq.v','msh_gemv.v','msh_vec.v','msh_kda.v','msh_mla.v','msh_mem.v','msh_lg.v']);
+const q=new URLSearchParams(location.search),file=q.get('file')||'',moduleName=q.get('module')||'';let fullSource='',selected=null,current='module';
+const title=document.getElementById('title'),meta=document.getElementById('meta'),status=document.getElementById('status'),sourceEl=document.getElementById('source'),nums=document.getElementById('lineNums'),frame=document.getElementById('codeFrame'),moduleBtn=document.getElementById('moduleView'),fileBtn=document.getElementById('fileView');
+function extractModule(source,name){if(!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(name))throw new Error('Invalid module name');const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),m=new RegExp(`^module\\s+${escaped}\\b`,'m').exec(source);if(!m)throw new Error(`module ${name} was not found in rtl/${file}`);const endRe=/\bendmodule\b/g;endRe.lastIndex=m.index;const end=endRe.exec(source);if(!end)throw new Error(`endmodule for ${name} was not found`);const code=source.slice(m.index,end.index+end[0].length).trimEnd();const first=source.slice(0,m.index).split('\n').length;return{code,first,last:first+code.split('\n').length-1}}
+function render(mode){current=mode;const useModule=mode==='module'&&selected;const code=useModule?selected.code:fullSource,first=useModule?selected.first:1,last=first+code.split('\n').length-1;sourceEl.innerHTML=hljs.highlight(code,{language:'verilog'}).value;nums.textContent=Array.from({length:last-first+1},(_,i)=>first+i).join('\n');moduleBtn.classList.toggle('active',useModule);fileBtn.classList.toggle('active',!useModule);frame.scrollTo({top:0,left:0});status.innerHTML=`<span class="tag">${useModule?'MODULE':'FULL FILE'}</span>rtl/${file} · lines ${first}–${last} · ${last-first+1} lines`;meta.textContent=useModule?`${moduleName} · lines ${first}–${last}`:`${fullSource.split('\n').length} lines`;title.textContent=useModule?`${moduleName} — rtl/${file}`:`rtl/${file}`;document.title=`${useModule?moduleName:file} · RTL Source`}
+async function load(){if(!allowed.has(file))throw new Error(`Source file is not allowed: ${file||'(missing)'}`);const r=await fetch(`rtl/${file}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status} while loading rtl/${file}`);fullSource=await r.text();selected=moduleName?extractModule(fullSource,moduleName):null;moduleBtn.disabled=!selected;render(selected?'module':'file')}
+document.getElementById('back').onclick=()=>{if(history.length>1)history.back();else window.close()};moduleBtn.onclick=()=>render('module');fileBtn.onclick=()=>render('file');document.getElementById('copy').onclick=async e=>{const text=current==='module'&&selected?selected.code:fullSource;await navigator.clipboard.writeText(text);const b=e.currentTarget,old=b.textContent;b.textContent='Copied ✓';setTimeout(()=>b.textContent=old,1200)};
+load().catch(err=>{frame.className='error';frame.replaceChildren();frame.textContent=`Unable to open highlighted RTL source.\n\n${String(err.message||err)}`;status.textContent='Load failed';title.textContent='RTL source error'});
+</script>
+</body></html>
