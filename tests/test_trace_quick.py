@@ -1,7 +1,12 @@
 from pathlib import Path
+import argparse
 import subprocess
 import sys
+import tempfile
 import unittest
+from unittest import mock
+
+from scripts import trace_quick
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +53,47 @@ class TraceQuickTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("--no-open", result.stdout)
+
+    def test_trace_depth_is_forwarded_to_runtime_driver(self):
+        runner = TRACE_RUNNER.read_text(encoding="utf-8")
+        driver = TRACE_TB.read_text(encoding="utf-8")
+        self.assertIn("def run_trace(image: Path, depth: int)", runner)
+        self.assertIn('f"--trace-depth={depth}"', runner)
+        self.assertIn("parse_trace_depth_arg(argc, argv, &trace_depth)", driver)
+        self.assertIn("top->trace(trace, static_cast<int>(trace_depth))", driver)
+        self.assertNotIn("top->trace(trace, 5)", driver)
+
+    def test_trace_depth_validation_rejects_invalid_values_early(self):
+        for value in ("0", "-1", "7junk", "2147483648"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    trace_quick.parse_trace_depth(value)
+        self.assertEqual(trace_quick.parse_trace_depth("7"), 7)
+
+    def test_trace_model_cache_is_keyed_by_depth(self):
+        with tempfile.TemporaryDirectory() as temp:
+            objdir = Path(temp) / "obj"
+            binary = objdir / "tb_trace"
+            calls = []
+
+            def fake_build(command, **_kwargs):
+                calls.append(command)
+                objdir.mkdir(parents=True, exist_ok=True)
+                binary.write_text("fake trace binary", encoding="utf-8")
+
+            with (
+                mock.patch.object(trace_quick, "OBJDIR", objdir),
+                mock.patch.object(trace_quick, "TRACE_BIN", binary),
+                mock.patch.object(trace_quick, "rtl_sources", return_value=[]),
+                mock.patch.object(trace_quick.shutil, "which", return_value=None),
+                mock.patch.object(trace_quick.subprocess, "run", side_effect=fake_build),
+            ):
+                trace_quick.build_trace_model(5, True)
+                trace_quick.build_trace_model(5, False)
+                trace_quick.build_trace_model(7, False)
+
+            self.assertEqual(len(calls), 2)
+            self.assertEqual((objdir / ".trace-depth").read_text(encoding="utf-8"), "7\n")
 
 
 if __name__ == "__main__":

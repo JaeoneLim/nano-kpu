@@ -29,6 +29,7 @@
 #include <verilated_fst_c.h>
 #include "Vmsh_chip_top.h"
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -71,6 +72,18 @@ static uint64_t arg_u64(int argc, char** argv, const char* key, uint64_t dflt) {
     return s.empty() ? dflt : strtoull(s.c_str(), nullptr, 0);
 }
 
+static bool parse_trace_depth_arg(int argc, char** argv, uint64_t* depth) {
+    std::string s = arg_str(argc, argv, "--trace-depth", "5");
+    errno = 0;
+    char* end = nullptr;
+    unsigned long long parsed = strtoull(s.c_str(), &end, 10);
+    if (errno || end == s.c_str() || *end != '\0'
+            || parsed == 0 || parsed > 2147483647ull)
+        return false;
+    *depth = static_cast<uint64_t>(parsed);
+    return true;
+}
+
 int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     std::string image_path = arg_str(argc, argv, "--image", "");
@@ -84,6 +97,11 @@ int main(int argc, char** argv) {
     uint64_t lat_base = arg_u64(argc, argv, "--lat-base", MEM_LATENCY_MIN);
     uint64_t stall_pm = arg_u64(argc, argv, "--stall-permille", 0);
     uint64_t tseed = arg_u64(argc, argv, "--timing-seed", 1);
+    uint64_t trace_depth = 0;
+    if (!parse_trace_depth_arg(argc, argv, &trace_depth)) {
+        fprintf(stderr, "--trace-depth must be between 1 and 2147483647\n");
+        return 2;
+    }
 
     std::vector<uint8_t> mem;
     {
@@ -101,7 +119,7 @@ int main(int argc, char** argv) {
     if (!trace_path.empty()) {
         Verilated::traceEverOn(true);
         trace = new VerilatedFstC;
-        top->trace(trace, 5);
+        top->trace(trace, static_cast<int>(trace_depth));
         trace->open(trace_path.c_str());
     }
     uint64_t sim_time = 0;

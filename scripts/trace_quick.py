@@ -21,6 +21,16 @@ TRACE_BIN = OBJDIR / "tb_trace"
 TRACE_FILE = WAVEDIR / "nano-quick.fst"
 
 
+def parse_trace_depth(value: str) -> int:
+    try:
+        depth = int(value, 10)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("trace depth must be an integer") from exc
+    if not 1 <= depth <= 2147483647:
+        raise argparse.ArgumentTypeError("trace depth must be between 1 and 2147483647")
+    return depth
+
+
 def run(command: list[str]) -> None:
     print("$", shlex.join(command), flush=True)
     subprocess.run(command, cwd=ROOT, check=True)
@@ -53,9 +63,14 @@ def ensure_quick_input() -> Path:
 
 
 def build_trace_model(depth: int, rebuild: bool) -> None:
+    depth_marker = OBJDIR / ".trace-depth"
+    compiled_depth = (
+        depth_marker.read_text(encoding="utf-8").strip()
+        if depth_marker.is_file() else None
+    )
     source_paths = [TRACE_TB] + [ROOT / s for s in rtl_sources() if not Path(s).is_absolute()]
     source_paths += [Path(s) for s in rtl_sources() if Path(s).is_absolute()]
-    stale = not TRACE_BIN.is_file() or any(
+    stale = compiled_depth != str(depth) or not TRACE_BIN.is_file() or any(
         p.is_file() and p.stat().st_mtime > TRACE_BIN.stat().st_mtime for p in source_paths
     )
     if not (rebuild or stale):
@@ -84,6 +99,7 @@ def build_trace_model(depth: int, rebuild: bool) -> None:
         env["CXXFLAGS"] = f"-std=c++14 {env.get('CXXFLAGS', '')}".strip()
     print("$", shlex.join(command), flush=True)
     subprocess.run(command, cwd=ROOT, env=env, check=True)
+    depth_marker.write_text(f"{depth}\n", encoding="utf-8")
 
 
 def previous_timing_args() -> dict[str, str]:
@@ -105,7 +121,7 @@ def previous_timing_args() -> dict[str, str]:
     return defaults
 
 
-def run_trace(image: Path) -> None:
+def run_trace(image: Path, depth: int) -> None:
     WAVEDIR.mkdir(parents=True, exist_ok=True)
     TRACE_FILE.unlink(missing_ok=True)
     layout = json.loads(Path(f"{image}.layout.json").read_text(encoding="utf-8"))
@@ -122,6 +138,7 @@ def run_trace(image: Path) -> None:
         "--timeout=300000000",
         *(f"--{key}={value}" for key, value in timing.items()),
         f"--trace-file={TRACE_FILE}",
+        f"--trace-depth={depth}",
     ]
     run(command)
     if not TRACE_FILE.is_file() or TRACE_FILE.stat().st_size == 0:
@@ -145,7 +162,7 @@ def open_surfer() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--trace-depth", type=int, default=5,
+    parser.add_argument("--trace-depth", type=parse_trace_depth, default=5,
                         help="Verilator hierarchy depth to trace (default: 5)")
     parser.add_argument("--rebuild", action="store_true",
                         help="force rebuilding the traced Verilator model")
@@ -154,7 +171,7 @@ def main() -> None:
     args = parser.parse_args()
     image = ensure_quick_input()
     build_trace_model(args.trace_depth, args.rebuild)
-    run_trace(image)
+    run_trace(image, args.trace_depth)
     if not args.no_open:
         open_surfer()
 
