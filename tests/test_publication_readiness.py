@@ -129,14 +129,17 @@ class PublicationReadinessTests(unittest.TestCase):
         self.assertIn("make lint", ci)
         self.assertIn("pull_request:", ci)
         self.assertIn(
-            "actions/checkout@11d5960a326750d5838078e36cf38b85af677262", ci
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", ci
         )
         self.assertIn(
-            "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", ci
+            "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97", ci
         )
 
         self.assertIn("pages: write", pages)
         self.assertIn("id-token: write", pages)
+        self.assertIn(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", pages
+        )
         self.assertIn(
             "actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b",
             pages,
