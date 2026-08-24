@@ -3,14 +3,15 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
+PAGES_OUTPUT = ROOT / "_site"
 
 FILES = (
     "nano-kpu-rtl-architecture.html",
@@ -35,33 +36,23 @@ RTL_FILES = (
     "msh_lg.v",
 )
 FORBIDDEN_SUFFIXES = {".fst", ".lib", ".sucl"}
+
 def validate_output_path(output: Path) -> Path:
-    """Allow only the workflow site directory or a safe child of the temp root."""
-    candidate = output.expanduser()
+    """Authorize only the repository's fixed Pages workflow destination."""
+    candidate = Path(os.path.abspath(output.expanduser()))
+    approved = Path(os.path.abspath(PAGES_OUTPUT))
+    if candidate != approved:
+        raise ValueError(f"refusing non-workflow Pages output: {candidate}")
     if candidate.is_symlink():
         raise ValueError(f"refusing symlink Pages output path: {candidate}")
-    resolved = candidate.resolve()
-    workflow_site = (ROOT / "_site").resolve()
-    if resolved == workflow_site:
-        return resolved
-
-    if resolved == ROOT or resolved in ROOT.parents:
-        raise ValueError(f"refusing repository root or ancestor: {resolved}")
-    for source in (DOCS, ROOT / "rtl", ROOT / "scripts", ROOT / "tests", ROOT / ".git"):
-        if resolved == source or source in resolved.parents:
-            raise ValueError(f"refusing output inside repository sources: {resolved}")
-
-    temp_root = Path(tempfile.gettempdir()).resolve()
-    if temp_root in resolved.parents:
-        return resolved
-    raise ValueError(f"refusing unsafe Pages output path: {resolved}")
+    return candidate.resolve()
 
 
 def build(output: Path) -> None:
     output = validate_output_path(output)
 
     if output.exists():
-        shutil.rmtree(output)
+        raise FileExistsError(f"refusing to replace existing Pages output: {output}")
     output.mkdir(parents=True)
 
     for relative in FILES:

@@ -1,8 +1,7 @@
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,13 +29,78 @@ class PublicationReadinessTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             safe = Path(tmp) / "site"
-            self.assertEqual(validate_output_path(safe), safe.resolve())
+            with self.assertRaises(ValueError):
+                validate_output_path(safe)
             target = Path(tmp) / "target"
             target.mkdir()
             link = Path(tmp) / "site-link"
             link.symlink_to(target, target_is_directory=True)
             with self.assertRaises(ValueError):
                 validate_output_path(link)
+
+    def test_pages_builder_rejects_repository_children_under_temp(self):
+        from scripts import build_pages
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            with mock.patch.object(build_pages, "PAGES_OUTPUT", repo / "_site"):
+                self.assertEqual(
+                    build_pages.validate_output_path(repo / "_site"),
+                    (repo / "_site").resolve(),
+                )
+                victim = repo / "review-victim"
+                victim.mkdir()
+                marker = victim / "marker"
+                marker.write_text("keep")
+                with self.assertRaises(ValueError):
+                    build_pages.build(victim)
+                self.assertEqual(marker.read_text(), "keep")
+
+    def test_pages_builder_rejects_symlinked_output_ancestors(self):
+        from scripts.build_pages import build
+
+        with tempfile.TemporaryDirectory() as tmp:
+            temp = Path(tmp)
+            target = temp / "target"
+            target.mkdir()
+            alias = temp / "alias"
+            alias.symlink_to(target, target_is_directory=True)
+            site = target / "site"
+            site.mkdir()
+            marker = site / "marker"
+            marker.write_text("keep")
+            with self.assertRaises(ValueError):
+                build(alias / "site")
+            self.assertEqual(marker.read_text(), "keep")
+
+    def test_pages_builder_never_replaces_an_existing_output(self):
+        from scripts import build_pages
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "site"
+            output.mkdir()
+            marker = output / "marker"
+            marker.write_text("keep")
+            with mock.patch.object(build_pages, "PAGES_OUTPUT", output):
+                with self.assertRaises(FileExistsError):
+                    build_pages.build(output)
+            self.assertEqual(marker.read_text(), "keep")
+
+    def test_pages_builder_site_symlink_cannot_redefine_approved_output(self):
+        from scripts import build_pages
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            victim = repo / "review-victim"
+            (repo / "_site").symlink_to(victim, target_is_directory=True)
+            with mock.patch.object(build_pages, "PAGES_OUTPUT", repo / "_site"):
+                with self.assertRaises(ValueError):
+                    build_pages.build(repo / "_site")
+                with self.assertRaises(ValueError):
+                    build_pages.build(victim)
+            self.assertFalse(victim.exists())
 
     def test_license_and_fork_notices_are_present(self):
         gitignore = (ROOT / ".gitignore").read_text()
@@ -99,13 +163,12 @@ class PublicationReadinessTests(unittest.TestCase):
         self.assertNotIn("outerHTML", viewer)
 
     def test_pages_builder_publishes_only_curated_documentation(self):
+        from scripts import build_pages
+
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "site"
-            subprocess.run(
-                [sys.executable, str(ROOT / "scripts/build_pages.py"), str(out)],
-                cwd=ROOT,
-                check=True,
-            )
+            with mock.patch.object(build_pages, "PAGES_OUTPUT", out):
+                build_pages.build(out)
 
             required = {
                 "index.html",
