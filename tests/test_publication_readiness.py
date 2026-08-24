@@ -141,15 +141,16 @@ class PublicationReadinessTests(unittest.TestCase):
             "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", pages
         )
         self.assertIn(
-            "actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b",
+            "actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d",
             pages,
         )
         self.assertIn(
-            "actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa",
+            "actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9",
             pages,
         )
+        self.assertIn("include-hidden-files: true", pages)
         self.assertIn(
-            "actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e",
+            "actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128",
             pages,
         )
         self.assertIn("python3 scripts/build_pages.py", pages)
